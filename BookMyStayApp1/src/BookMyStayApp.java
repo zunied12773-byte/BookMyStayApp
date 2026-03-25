@@ -60,8 +60,42 @@ public class BookMyStayApp {
         }
     }
 
+    static class BookingHistory {
+        private List<Reservation> history = new ArrayList<>();
+
+        public void addReservation(Reservation reservation) {
+            history.add(reservation);
+        }
+
+        public List<Reservation> getAllReservations() {
+            return history;
+        }
+    }
+
+    static class BookingReportService {
+        public void generateReport(List<Reservation> reservations) {
+            System.out.println("\nBooking Report");
+
+            if (reservations.isEmpty()) {
+                System.out.println("No bookings found.");
+                return;
+            }
+
+            for (Reservation r : reservations) {
+                System.out.println(r.getReservationId() + " | " + r.getGuestName() + " | " + r.getRoomType());
+            }
+
+            System.out.println("Total Bookings: " + reservations.size());
+        }
+    }
+
     static class RoomAllocationService {
         private Map<String, Set<String>> assignedRoomsByType = new HashMap<>();
+        private BookingHistory bookingHistory;
+
+        public RoomAllocationService(BookingHistory bookingHistory) {
+            this.bookingHistory = bookingHistory;
+        }
 
         public void allocateRoom(Reservation reservation, RoomInventory inventory) {
             String roomType = reservation.getRoomType();
@@ -74,6 +108,8 @@ public class BookMyStayApp {
                 assignedRoomsByType.get(roomType).add(roomId);
 
                 inventory.updateAvailability(roomType, available - 1);
+
+                bookingHistory.addReservation(reservation);
 
                 System.out.println("Booking confirmed: " + reservation.getGuestName()
                         + " | Room ID: " + roomId
@@ -89,84 +125,28 @@ public class BookMyStayApp {
         }
     }
 
-    static class AddOnService {
-        private String serviceName;
-        private double cost;
-
-        public AddOnService(String serviceName, double cost) {
-            this.serviceName = serviceName;
-            this.cost = cost;
-        }
-
-        public String getServiceName() {
-            return serviceName;
-        }
-
-        public double getCost() {
-            return cost;
-        }
-    }
-
-    static class AddOnServiceManager {
-        private Map<String, List<AddOnService>> serviceMap = new HashMap<>();
-
-        public void addService(String reservationId, AddOnService service) {
-            serviceMap.putIfAbsent(reservationId, new ArrayList<>());
-            serviceMap.get(reservationId).add(service);
-        }
-
-        public double calculateTotalCost(String reservationId) {
-            double total = 0;
-            List<AddOnService> services = serviceMap.getOrDefault(reservationId, new ArrayList<>());
-            for (AddOnService s : services) {
-                total += s.getCost();
-            }
-            return total;
-        }
-
-        public void displayServices(String reservationId) {
-            List<AddOnService> services = serviceMap.getOrDefault(reservationId, new ArrayList<>());
-
-            System.out.println("\nServices for Reservation ID: " + reservationId);
-
-            if (services.isEmpty()) {
-                System.out.println("No add-on services.");
-                return;
-            }
-
-            for (AddOnService s : services) {
-                System.out.println(s.getServiceName() + " - ₹" + s.getCost());
-            }
-
-            System.out.println("Total Add-On Cost: ₹" + calculateTotalCost(reservationId));
-        }
-    }
-
     public static void main(String[] args) {
 
         BookingRequestQueue queue = new BookingRequestQueue();
 
         Reservation r1 = new Reservation("R101", "Abhi", "Single");
         Reservation r2 = new Reservation("R102", "Subha", "Single");
+        Reservation r3 = new Reservation("R103", "Vanmathi", "Suite");
 
         queue.addRequest(r1);
         queue.addRequest(r2);
+        queue.addRequest(r3);
 
         RoomInventory inventory = new RoomInventory();
-        RoomAllocationService allocationService = new RoomAllocationService();
+        BookingHistory history = new BookingHistory();
+        RoomAllocationService allocationService = new RoomAllocationService(history);
+        BookingReportService reportService = new BookingReportService();
 
         while (queue.hasPendingRequests()) {
             Reservation r = queue.getNextRequest();
             allocationService.allocateRoom(r, inventory);
         }
 
-        AddOnServiceManager manager = new AddOnServiceManager();
-
-        manager.addService("R101", new AddOnService("Breakfast", 200));
-        manager.addService("R101", new AddOnService("Airport Pickup", 500));
-        manager.addService("R102", new AddOnService("Extra Bed", 300));
-
-        manager.displayServices("R101");
-        manager.displayServices("R102");
+        reportService.generateReport(history.getAllReservations());
     }
 }
