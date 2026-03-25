@@ -1,8 +1,9 @@
+import java.io.*;
 import java.util.*;
 
 public class BookMyStayApp {
 
-    static class Reservation {
+    static class Reservation implements Serializable {
         private String reservationId;
         private String guestName;
         private String roomType;
@@ -26,23 +27,7 @@ public class BookMyStayApp {
         }
     }
 
-    static class BookingRequestQueue {
-        private Queue<Reservation> queue = new LinkedList<>();
-
-        public synchronized void addRequest(Reservation r) {
-            queue.offer(r);
-        }
-
-        public synchronized Reservation getNextRequest() {
-            return queue.poll();
-        }
-
-        public synchronized boolean hasRequests() {
-            return !queue.isEmpty();
-        }
-    }
-
-    static class RoomInventory {
+    static class RoomInventory implements Serializable {
         private Map<String, Integer> availability = new HashMap<>();
 
         public RoomInventory() {
@@ -51,92 +36,104 @@ public class BookMyStayApp {
             availability.put("Suite", 1);
         }
 
-        public synchronized int getAvailability(String type) {
+        public int getAvailability(String type) {
             return availability.getOrDefault(type, 0);
         }
 
-        public synchronized void decrease(String type) {
+        public void decrease(String type) {
             availability.put(type, getAvailability(type) - 1);
+        }
+
+        public void increase(String type) {
+            availability.put(type, getAvailability(type) + 1);
+        }
+
+        public Map<String, Integer> getAll() {
+            return availability;
+        }
+
+        public void setAll(Map<String, Integer> data) {
+            availability = data;
+        }
+    }
+
+    static class BookingHistory implements Serializable {
+        private List<Reservation> history = new ArrayList<>();
+
+        public void add(Reservation r) {
+            history.add(r);
+        }
+
+        public List<Reservation> getAll() {
+            return history;
+        }
+
+        public void setAll(List<Reservation> list) {
+            history = list;
         }
     }
 
     static class RoomAllocationService {
-        private Map<String, Set<String>> assigned = new HashMap<>();
-
-        public synchronized void allocateRoom(Reservation r, RoomInventory inventory) {
-            String type = r.getRoomType();
-            int available = inventory.getAvailability(type);
-
-            if (available > 0) {
-                String roomId = generateRoomId(type);
-
-                assigned.putIfAbsent(type, new HashSet<>());
-                assigned.get(type).add(roomId);
-
-                inventory.decrease(type);
-
-                System.out.println(Thread.currentThread().getName()
-                        + " -> Booking confirmed: " + r.getGuestName()
-                        + " | " + roomId);
+        public void allocate(Reservation r, RoomInventory inventory, BookingHistory history) {
+            if (inventory.getAvailability(r.getRoomType()) > 0) {
+                inventory.decrease(r.getRoomType());
+                history.add(r);
+                System.out.println("Booked: " + r.getReservationId() + " | " + r.getGuestName());
             } else {
-                System.out.println(Thread.currentThread().getName()
-                        + " -> No rooms for " + r.getGuestName());
+                System.out.println("No rooms for " + r.getGuestName());
             }
-        }
-
-        private String generateRoomId(String type) {
-            int count = assigned.getOrDefault(type, new HashSet<>()).size() + 1;
-            return type + "-" + count;
         }
     }
 
-    static class BookingProcessor extends Thread {
-        private BookingRequestQueue queue;
-        private RoomAllocationService service;
-        private RoomInventory inventory;
+    static class PersistenceService {
 
-        public BookingProcessor(String name,
-                                BookingRequestQueue queue,
-                                RoomAllocationService service,
-                                RoomInventory inventory) {
-            super(name);
-            this.queue = queue;
-            this.service = service;
-            this.inventory = inventory;
+        private static final String FILE = "data.ser";
+
+        public static void save(RoomInventory inventory, BookingHistory history) {
+            try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(FILE))) {
+                oos.writeObject(inventory);
+                oos.writeObject(history);
+                System.out.println("Data saved");
+            } catch (Exception e) {
+                System.out.println("Save failed");
+            }
         }
 
-        public void run() {
-            while (true) {
-                Reservation r;
-
-                synchronized (queue) {
-                    if (!queue.hasRequests()) break;
-                    r = queue.getNextRequest();
-                }
-
-                if (r != null) {
-                    service.allocateRoom(r, inventory);
-                }
+        public static Object[] load() {
+            try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(FILE))) {
+                RoomInventory inventory = (RoomInventory) ois.readObject();
+                BookingHistory history = (BookingHistory) ois.readObject();
+                System.out.println("Data loaded");
+                return new Object[]{inventory, history};
+            } catch (Exception e) {
+                System.out.println("No previous data found, starting fresh");
+                return null;
             }
         }
     }
 
     public static void main(String[] args) {
 
-        BookingRequestQueue queue = new BookingRequestQueue();
+        RoomInventory inventory;
+        BookingHistory history;
 
-        queue.addRequest(new Reservation("R101", "Abhi", "Single"));
-        queue.addRequest(new Reservation("R102", "Subha", "Single"));
-        queue.addRequest(new Reservation("R103", "Rahul", "Single"));
-        queue.addRequest(new Reservation("R104", "Sneha", "Suite"));
+        Object[] data = PersistenceService.load();
 
-        RoomInventory inventory = new RoomInventory();
+        if (data != null) {
+            inventory = (RoomInventory) data[0];
+            history = (BookingHistory) data[1];
+        } else {
+            inventory = new RoomInventory();
+            history = new BookingHistory();
+        }
+
         RoomAllocationService service = new RoomAllocationService();
 
-        BookingProcessor t1 = new BookingProcessor("Thread-1", queue, service, inventory);
-        BookingProcessor t2 = new BookingProcessor("Thread-2", queue, service, inventory);
+        service.allocate(new Reservation("R101", "Abhi", "Single"), inventory, history);
+        service.allocate(new Reservation("R102", "Subha", "Suite"), inventory, history);
 
-        t1.start();
-        t2.start();
+        System.out.println("Total Bookings: " + history.getAll().size());
+
+        PersistenceService.save(inventory, history);
     }
 }
