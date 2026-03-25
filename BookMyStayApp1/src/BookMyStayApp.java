@@ -3,12 +3,18 @@ import java.util.*;
 public class BookMyStayApp {
 
     static class Reservation {
+        private String reservationId;
         private String guestName;
         private String roomType;
 
-        public Reservation(String guestName, String roomType) {
+        public Reservation(String reservationId, String guestName, String roomType) {
+            this.reservationId = reservationId;
             this.guestName = guestName;
             this.roomType = roomType;
+        }
+
+        public String getReservationId() {
+            return reservationId;
         }
 
         public String getGuestName() {
@@ -21,11 +27,7 @@ public class BookMyStayApp {
     }
 
     static class BookingRequestQueue {
-        private Queue<Reservation> requestQueue;
-
-        public BookingRequestQueue() {
-            requestQueue = new LinkedList<>();
-        }
+        private Queue<Reservation> requestQueue = new LinkedList<>();
 
         public void addRequest(Reservation reservation) {
             requestQueue.offer(reservation);
@@ -41,10 +43,9 @@ public class BookMyStayApp {
     }
 
     static class RoomInventory {
-        private Map<String, Integer> roomAvailability;
+        private Map<String, Integer> roomAvailability = new HashMap<>();
 
         public RoomInventory() {
-            roomAvailability = new HashMap<>();
             roomAvailability.put("Single", 2);
             roomAvailability.put("Double", 1);
             roomAvailability.put("Suite", 1);
@@ -60,13 +61,7 @@ public class BookMyStayApp {
     }
 
     static class RoomAllocationService {
-        private Set<String> allocatedRoomIds;
-        private Map<String, Set<String>> assignedRoomsByType;
-
-        public RoomAllocationService() {
-            allocatedRoomIds = new HashSet<>();
-            assignedRoomsByType = new HashMap<>();
-        }
+        private Map<String, Set<String>> assignedRoomsByType = new HashMap<>();
 
         public void allocateRoom(Reservation reservation, RoomInventory inventory) {
             String roomType = reservation.getRoomType();
@@ -75,16 +70,16 @@ public class BookMyStayApp {
             if (available > 0) {
                 String roomId = generateRoomId(roomType);
 
-                allocatedRoomIds.add(roomId);
-
                 assignedRoomsByType.putIfAbsent(roomType, new HashSet<>());
                 assignedRoomsByType.get(roomType).add(roomId);
 
                 inventory.updateAvailability(roomType, available - 1);
 
-                System.out.println("Booking confirmed for Guest: " + reservation.getGuestName() + ", Room ID: " + roomId);
+                System.out.println("Booking confirmed: " + reservation.getGuestName()
+                        + " | Room ID: " + roomId
+                        + " | Reservation ID: " + reservation.getReservationId());
             } else {
-                System.out.println("No rooms available for Guest: " + reservation.getGuestName());
+                System.out.println("No rooms available for " + reservation.getGuestName());
             }
         }
 
@@ -94,15 +89,68 @@ public class BookMyStayApp {
         }
     }
 
-    public static void main(String[] args) {
+    static class AddOnService {
+        private String serviceName;
+        private double cost;
 
-        System.out.println("Room Allocation Processing");
+        public AddOnService(String serviceName, double cost) {
+            this.serviceName = serviceName;
+            this.cost = cost;
+        }
+
+        public String getServiceName() {
+            return serviceName;
+        }
+
+        public double getCost() {
+            return cost;
+        }
+    }
+
+    static class AddOnServiceManager {
+        private Map<String, List<AddOnService>> serviceMap = new HashMap<>();
+
+        public void addService(String reservationId, AddOnService service) {
+            serviceMap.putIfAbsent(reservationId, new ArrayList<>());
+            serviceMap.get(reservationId).add(service);
+        }
+
+        public double calculateTotalCost(String reservationId) {
+            double total = 0;
+            List<AddOnService> services = serviceMap.getOrDefault(reservationId, new ArrayList<>());
+            for (AddOnService s : services) {
+                total += s.getCost();
+            }
+            return total;
+        }
+
+        public void displayServices(String reservationId) {
+            List<AddOnService> services = serviceMap.getOrDefault(reservationId, new ArrayList<>());
+
+            System.out.println("\nServices for Reservation ID: " + reservationId);
+
+            if (services.isEmpty()) {
+                System.out.println("No add-on services.");
+                return;
+            }
+
+            for (AddOnService s : services) {
+                System.out.println(s.getServiceName() + " - ₹" + s.getCost());
+            }
+
+            System.out.println("Total Add-On Cost: ₹" + calculateTotalCost(reservationId));
+        }
+    }
+
+    public static void main(String[] args) {
 
         BookingRequestQueue queue = new BookingRequestQueue();
 
-        queue.addRequest(new Reservation("Abhi", "Single"));
-        queue.addRequest(new Reservation("Subha", "Single"));
-        queue.addRequest(new Reservation("Vanmathi", "Suite"));
+        Reservation r1 = new Reservation("R101", "Abhi", "Single");
+        Reservation r2 = new Reservation("R102", "Subha", "Single");
+
+        queue.addRequest(r1);
+        queue.addRequest(r2);
 
         RoomInventory inventory = new RoomInventory();
         RoomAllocationService allocationService = new RoomAllocationService();
@@ -111,5 +159,14 @@ public class BookMyStayApp {
             Reservation r = queue.getNextRequest();
             allocationService.allocateRoom(r, inventory);
         }
+
+        AddOnServiceManager manager = new AddOnServiceManager();
+
+        manager.addService("R101", new AddOnService("Breakfast", 200));
+        manager.addService("R101", new AddOnService("Airport Pickup", 500));
+        manager.addService("R102", new AddOnService("Extra Bed", 300));
+
+        manager.displayServices("R101");
+        manager.displayServices("R102");
     }
 }
